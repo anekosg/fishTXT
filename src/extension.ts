@@ -27,27 +27,27 @@ class ConfigInfoProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   getChildren(element?: vscode.TreeItem): Thenable<vscode.TreeItem[]> {
     console.log('getChildren method is called'); // 添加调试日志
 
-    const item4 = new vscode.TreeItem(`配置节点`);
+    const item4 = new vscode.TreeItem(`Setting`);
     item4.command = {
       command: 'extension.myView.setting',
       title: 'Transfer Inputs',
       arguments: []
     };
-
-    const item = new vscode.TreeItem(`当前行${currentLineIndex}`);
-    const item2 = new vscode.TreeItem('点击跳转行');
-    item2.command = {
-      command: 'extension.myView.showTransfer',
-      title: 'Transfer Inputs',
-      arguments: []
-    };
-    const item3 = new vscode.TreeItem(`书籍路径：${fileFullPath}`);
+    const item3 = new vscode.TreeItem(`PreviousLine`);
     item3.command = {
-      command: 'extension.myView.showFileFullPath',
+      command: 'extension.myStatusBar.previousLine',
       title: 'Transfer Inputs',
       arguments: []
     };
-    return Promise.resolve([item4,item3, item, item2]);
+    const item2 = new vscode.TreeItem(`NextLine`);
+    item2.command = {
+      command: 'extension.myStatusBar.nextLine',
+      title: 'Transfer Inputs',
+      arguments: []
+    };
+
+    
+    return Promise.resolve([item4, item3, item2]);
 
   }
 }
@@ -65,7 +65,7 @@ function showNextLine() {
 }
 
 // 显示上一行内容的函数
-function showPreviousLine() {
+function previousLine() {
   if (txtLines.length === 0) {
     return;
   }
@@ -76,7 +76,7 @@ function showPreviousLine() {
 }
 
 // 启用上下切换功能
-function enableLineSwitch() {
+function nextLine() {
   isFunctionEnabled = true;
 
   if (isFunctionEnabled == true) {
@@ -85,10 +85,10 @@ function enableLineSwitch() {
 }
 
 // 禁用上下切换功能
-function disableLineSwitch() {
-  isFunctionEnabled = false;
-  mouseDownLine = null;
-}
+// function disableLineSwitch() {
+//   isFunctionEnabled = false;
+//   mouseDownLine = null;
+// }
 
 
 function readFile() {
@@ -119,25 +119,43 @@ function getWebviewContent(webview: vscode.Webview) {
             <title>Webview Input Example</title>
         </head>
         <body>
-           <div><label>书籍目录：</label><input type="text" id="fileFullPath" value=""></div>
-           <div><label>当前行：</label><input type="text" id="currentLineIndex" value=""></div>
-            <input type="button" id="btnSubmit" value="保存">
+           <div><label>BookDir：</label><input type="text" id="fileFullPath" value="">
+           <input type="button" id="switchBookBtn" value="switchBook"></div>
+
+           <div><label>CurrentRow：</label><input type="text" id="currentLineIndex" value="">
+           <input type="button" id="switchIndexBtn" value="switchLine"></div>
+            
 
             <script>
                 const vscode = acquireVsCodeApi();
 
-                const button = document.getElementById('btnSubmit');
-                button.addEventListener('click', () => {
+                const switchBookBtn = document.getElementById('switchBookBtn');
+                switchBookBtn.addEventListener('click', () => {
+                    const fileFullPath = document.getElementById('fileFullPath');
+             
                     vscode.postMessage({
-                        command: 'btnSubmit'
+                        command: 'switchBookBtn',
+                        value:fileFullPath.value
+                    });
+                });
+
+                const switchIndexBtn = document.getElementById('switchIndexBtn');
+                switchIndexBtn.addEventListener('click', () => {
+                   
+                    const currentLineIndex = document.getElementById('currentLineIndex');
+                    
+                    vscode.postMessage({
+                        command: 'switchIndexBtn',
+                        value: currentLineIndex.value
                     });
                 });
 
                 window.addEventListener('message', event => {
                     const message = event.data;
                     switch (message.command) {
-                        case 'updateTextbox':
-                            const textbox = document.getElementById('myTextbox');
+                        case 'updateFileFullPath':
+                          
+                            const textbox = document.getElementById('fileFullPath');
                             textbox.value = message.text;
                             break;
                     }
@@ -151,7 +169,7 @@ export function activate(context: vscode.ExtensionContext) {
   const disposable = vscode.commands.registerCommand('extension.myView.setting', () => {
     const panel = vscode.window.createWebviewPanel(
       'webviewInputExample',
-      '配置节点',
+      'setting',
       vscode.ViewColumn.One,
       {
         enableScripts: true
@@ -163,19 +181,45 @@ export function activate(context: vscode.ExtensionContext) {
     panel.webview.onDidReceiveMessage(
       message => {
         switch (message.command) {
-          case 'btnSubmit':
+          case 'switchBookBtn':
             // 处理按钮点击事件
+            var value = message.value;
+            if (value && fs.existsSync(value)) {
+              fileFullPath = value;
+              currentLineIndex = 0;
+              readFile();
+            }
+            break;
+          case 'switchIndexBtn':
+            // 处理按钮点击事件
+            var index = message.value;
+            if (index && Number(index) >= 0) {
+              currentLineIndex = Number(index) - 1;
+              vscode.commands.executeCommand('extension.myStatusBar.nextLine');
+            }
 
-            
-            const newText = 'Button clicked! New text assigned.';
-            panel.webview.postMessage({ command: 'updateTextbox', text: newText });
+            // var index = message.value;
+            // if (index && Number(index) >= 0) {
+            //   currentLineIndex = Number(index) - 1;
+            //   vscode.commands.executeCommand('extension.myStatusBar.nextLine');
+
+            //   //const newText = 'Button clicked! New text assigned.';
+            //   //panel.webview.postMessage({ command: 'updateFileFullPath', text: newText });
+            // }
             break;
         }
       },
       undefined,
       context.subscriptions
     );
+
+    panel.webview.postMessage({ command: 'updateFileFullPath', text: fileFullPath });
   });
+
+
+  // const nextLine = vscode.commands.registerCommand('extension.myView.nextLine', () => {
+  //   vscode.commands.executeCommand('extension.myStatusBar.enableLineSwitch');
+  // });
 
   context.subscriptions.push(disposable);
   
@@ -185,55 +229,58 @@ export function activate(context: vscode.ExtensionContext) {
   vscode.window.registerTreeDataProvider('extension.myView', configInfoProvider);
 
 
-  vscode.window.onDidChangeActiveTextEditor(() => {
-    configInfoProvider.refresh();
-  });
+  // vscode.window.onDidChangeActiveTextEditor(() => {
+  //   configInfoProvider.refresh();
+  // });
 
-  vscode.window.onDidChangeTextEditorSelection(() => {
-    configInfoProvider.refresh();
-  });
+  // vscode.window.onDidChangeTextEditorSelection(() => {
+  //   configInfoProvider.refresh();
+  // });
 
-  const showTransfer = vscode.commands.registerCommand('extension.myView.showTransfer', async () => {
-    const input = await vscode.window.showInputBox({
-      prompt: '请输入跳转行',
-      placeHolder: '数字：0，1，2 等等'
-    });
-    if (input && Number(input)>=0) {
-      currentLineIndex = Number(input) - 1;
-      vscode.commands.executeCommand('extension.myStatusBar.enableLineSwitch');
-      configInfoProvider.refresh();
-    }
-  });
-  const showFileFullPath = vscode.commands.registerCommand('extension.myView.showFileFullPath', async () => {
-    const input = await vscode.window.showInputBox({
-      prompt: '请输入书籍全路径',
-      placeHolder: 'D:\\txt\\示例地址.txt'
-    });
-    if (input && fs.existsSync(input)) {
-      fileFullPath = input + "";
-      currentLineIndex = 0;
-      readFile();
-      configInfoProvider.refresh();
-    }
-  });
+  // const showTransfer = vscode.commands.registerCommand('extension.myView.showTransfer', async () => {
+  //   const input = await vscode.window.showInputBox({
+  //     prompt: '请输入跳转行',
+  //     placeHolder: '数字：0，1，2 等等'
+  //   });
+  //   if (input && Number(input)>=0) {
+  //     currentLineIndex = Number(input) - 1;
+  //     vscode.commands.executeCommand('extension.myStatusBar.enableLineSwitch');
+  //     configInfoProvider.refresh();
+  //   }
+  // });
+  // const showFileFullPath = vscode.commands.registerCommand('extension.myView.showFileFullPath', async () => {
+  //   const input = await vscode.window.showInputBox({
+  //     prompt: '请输入书籍全路径',
+  //     placeHolder: 'D:\\txt\\示例地址.txt'
+  //   });
+  //   if (input && fs.existsSync(input)) {
+  //     fileFullPath = input + "";
+  //     currentLineIndex = 0;
+  //     readFile();
+  //     configInfoProvider.refresh();
+  //   }
+  // });
 
-  context.subscriptions.push(showTransfer, showFileFullPath);
+  // context.subscriptions.push(showTransfer, showFileFullPath);
 
   //-----------------------------------------------------------
   statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left);
   statusBarItem.show();
-  statusBarItem.command = 'extension.myStatusBar.enableLineSwitch';
+  statusBarItem.command = 'extension.myStatusBar.nextLine';
 
-  const lineSwitchDisposable = vscode.commands.registerCommand('extension.myStatusBar.enableLineSwitch', () => {
-    enableLineSwitch();
+  const nextLineCommand = vscode.commands.registerCommand('extension.myStatusBar.nextLine', () => {
+    nextLine();
     //configInfoProvider.refresh();
   });
-
-  const globalClickDisposable = vscode.window.onDidChangeActiveTextEditor(() => {
-    disableLineSwitch();
+  const previousLineCommand = vscode.commands.registerCommand('extension.myStatusBar.previousLine', () => {
+    previousLine();
+    //configInfoProvider.refresh();
   });
+  // const globalClickDisposable = vscode.window.onDidChangeActiveTextEditor(() => {
+  //   disableLineSwitch();
+  // });
 
-  context.subscriptions.push(statusBarItem, lineSwitchDisposable, globalClickDisposable);
+  context.subscriptions.push(statusBarItem, nextLineCommand, previousLineCommand);
 
 
 
